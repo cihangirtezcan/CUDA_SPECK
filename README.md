@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/4af16961-721b-498a-9a2b-d1c73ac4d0a6)# CUDA_SPECK
+# CUDA_SPECK
 
 These CUDA Optimizations are used in the ToSC publication **GPU Assisted Brute Force Cryptanalysis of GPRS, GSM, RFID, and TETRA - Brute Force Cryptanalysis of KASUMI, SPECK, and TEA3** by Cihangir Tezcan and Gregor Leander.
 
