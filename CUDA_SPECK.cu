@@ -9,18 +9,24 @@
 #define ER32(x,y,k) (x=ROTR32(x,8), x+=y, x^=k, y=ROTL32(y,3), y^=x)
 #define ER24(x,y,k) (x=ROTR24(x,8)& 0xffffff, x+=y, x&=0xffffff, x^=k, y=ROTL24(y,3)& 0xffffff, y^=x)
 #define ER16(x,y,k) (x=ROTR16(x,7), x+=y, x^=k, y=ROTL16(y,2), y^=x)
-#define ER16b(x,y,k) (x=ROTR16b(x,7), x+=y, x^=k, y=ROTL16b(y,2), y^=x)
+#define ER16b(x,y,k) (x=ROTR16b(x,7), x+=y, x^=k, x &=0xffff, y=ROTL16b(y,2), y^=x)
+#define ER16c(x,y,k) (x=(ROTR16(x,7))& 0xffff, x+=y, x&=0xffff, x^=k, y=(ROTL16(y,2))& 0xffff, y^=x)
 #define DR32(x,y,k) (y^=x, y=ROTR32(y,3), x^=k, x-=y, x=ROTL32(x,8))
-#define ROTL32(x,r) (((x)<<(r)) | (x>>(32-(r))))
+//#define ROTL32(x,r) (((x)<<(r)) | (x>>(32-(r))))
 #define ROTL24(x,r) (((x)<<(r)) | (x>>(24-(r))))
-#define ROTL16(x,r) (((x)<<(r)) | (x>>(16-(r))))
+//#define ROTL16(x,r) (((x)<<(r)) | (x>>(16-(r))))
 #define ROTL16b(x,r) ((((x)<<(r)) | (x>>(16-(r))))&0xFFFF)
-#define ROTR32(x,r) (((x)>>(r)) | ((x)<<(32-(r))))
+//#define ROTR32(x,r) (((x)>>(r)) | ((x)<<(32-(r))))
 #define ROTR24(x,r) (((x)>>(r)) | ((x)<<(24-(r))))
-#define ROTR16(x,r) (((x)>>(r)) | ((x)<<(16-(r))))
+//#define ROTR16(x,r) (((x)>>(r)) | ((x)<<(16-(r))))
 #define ROTR16b(x,r) ((((x)>>(r)) | ((x)<<(16-(r))))&0xFFFF)
 #define ROTL64(x,r) (((x)<<(r)) | (x>>(64-(r))))
 #define ROTR64(x,r) (((x)>>(r)) | ((x)<<(64-(r))))
+
+#define ROTL32(x,r) (x<<r) | (x>>(32-r))
+#define ROTL16(x,r) (x<<r) | (x>>(16-r))
+#define ROTR32(x,r) (x>>r) | (x<<(32-r))
+#define ROTR16(x,r) (x>>r) | (x<<(16-r))
 
 
 #define ROUNDS 32
@@ -183,7 +189,8 @@ __global__ void speck64_exhaustive(uint16_t* ct, uint16_t* pt, uint16_t* K, uint
             ER16(D, A, i++);
         }
         ER16(ct1, ct0, A);
-        if ((ct0 == c0) && (ct1 == c1)) { K[0] = threadIndex >> 16; K[1] = threadIndex & 0xffff; K[2] = 0x1110; K[3] = trial;  }
+        if ((ct0 == c0) && (ct1 == c1)) { K[0] = threadIndex >> 16; K[1] = threadIndex & 0xffff; K[2] = 0x00ab; K[3] = trial;   //  printf("Captured key: %04x %04x %04x %04x\n", K[0], K[1], K[2], K[3]);
+        }
     }
 }
 __global__ void speck64_exhaustive32bit(uint32_t* ct, uint32_t* pt, uint32_t* K, uint32_t trials) {
@@ -200,15 +207,17 @@ __global__ void speck64_exhaustive32bit(uint32_t* ct, uint32_t* pt, uint32_t* K,
         C = 0x00ab;
         D = trial;
         for (int j = 0; j < 7; j++) {
-            ER16b(ct1, ct0, A);
-            ER16b(B, A, i++);
-            ER16b(ct1, ct0, A);
-            ER16b(C, A, i++);
-            ER16b(ct1, ct0, A);
-            ER16b(D, A, i++);
+            ER16c(ct1, ct0, A);
+            ER16c(B, A, i++);
+            ER16c(ct1, ct0, A);
+            ER16c(C, A, i++);
+            ER16c(ct1, ct0, A);
+            ER16c(D, A, i++);
         }
-        ER16b(ct1, ct0, A);
-        if ((ct0 == c0) && (ct1 == c1)) { K[0] = threadIndex >> 16; K[1] = threadIndex & 0xffff; K[2] = 0x1110; K[3] = trial; }
+        ER16c(ct1, ct0, A);
+        if ((ct0 == c0) && (ct1 == c1)) {
+            K[0] = threadIndex >> 16; K[1] = threadIndex & 0xffff; K[2] = 0x00ab; K[3] = trial; // printf("Captured key: %04x %04x %04x %04x\n", K[0], K[1], K[2], K[3]);
+        }
     }
 }
 
@@ -292,6 +301,7 @@ int main128() {
 }
 //SPECK 64
 int main64b() {
+    cudaSetDevice(0);
 // Key: 1918 1110 0908 0100
 // Plaintext: 6574 694c
 // Ciphertext : a868 42f2
@@ -390,7 +400,7 @@ int main72() {
     float time = 0;
     cudaEvent_t startx, stopx;
     cudaEventCreate(&startx);    cudaEventCreate(&stopx);    cudaEventRecord(startx);
-    speck96_exhaustive << <BLOCKS, THREADS >> > (ct_d, pt_d, K_d, trial);
+    speck72_exhaustive << <BLOCKS, THREADS >> > (ct_d, pt_d, K_d, trial);
     cudaMemcpy(K, K_d, 3 * sizeof(uint32_t), cudaMemcpyDeviceToHost);
     cudaEventRecord(stopx);    cudaEventSynchronize(stopx);    cudaEventElapsedTime(&time, startx, stopx);
     printf("Captured key: %08x %08x %08x\n", K[0], K[1], K[2]);
@@ -407,8 +417,9 @@ int main() {
         "Choice: "
     );
     scanf_s("%d", &choice);
-    if (choice == 1) main64();
+    if (choice == 1) main64b();
     if (choice == 2) main72();
     if (choice == 3) main96();
     if (choice == 4) main128();
+    return 0;
 }
